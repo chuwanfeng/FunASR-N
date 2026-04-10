@@ -322,26 +322,43 @@ class ParaformerEngine:
                 sf.write(temp_path, seg_audio, sr)
             
             try:
-                # 识别
-                res = self.model.generate(
-                    input=temp_path,
-                    language="auto",  # 自动识别中/英/日/韩
-                    batch_size=1,
-                    hotwords=hotwords,
-                    output_timestamp=True,  # 启用时间戳
-                )
+                # 识别 - 根据模型类型选择参数                
+                match PARAFORMER_MODEL:
+                    case  model if "paraformer-zh" in model:
+                        # 中文专用模型（paraformer-zh）和其他模型
+                        res = self.model.generate(
+                            input=temp_path,
+                            batch_size=1,
+                            hotwords=hotwords,
+                            output_timestamp=True,
+                        )
+                    case _:
+                        # 多语种模型（中/英/日/韩）
+                        res = self.model.generate(
+                            input=temp_path,
+                            language="auto",
+                            batch_size=1,
+                            hotwords=hotwords,
+                            output_timestamp=True,
+                        )
                 
                 if res and len(res) > 0:
                     text = res[0].get("text", "")
                     if text:
-                        # 应用标点恢复
-                        text = self._apply_punctuation(text)
-                        results.append(RecognitionSegment(
-                            text=text.strip(),
-                            start=seg_start,
-                            end=seg_end,
-                            confidence=res[0].get("confidence", None)
-                        ))
+                        # 过滤 SenseVoice 特殊标记 <|xxx|>
+                        import re
+                        text = re.sub(r'<\|[^|]*\|>', '', text)
+                        text = text.strip()
+                        
+                        if text:  # 过滤后还有内容才添加
+                            # 应用标点恢复
+                            text = self._apply_punctuation(text)
+                            results.append(RecognitionSegment(
+                                text=text,
+                                start=seg_start,
+                                end=seg_end,
+                                confidence=res[0].get("confidence", None)
+                            ))
             except Exception as e:
                 logger.error(f"片段识别失败 [{seg_start:.2f}-{seg_end:.2f}]: {e}")
             finally:
