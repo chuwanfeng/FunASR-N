@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>语音转字幕 - 智能字幕生成器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+        
+        .upload-area {
+            border: 2px dashed #cbd5e0;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f7fafc;
+        }
+        
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #edf2f7;
+        }
+        
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #e9d8fd;
+        }
+        
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        .file-info {
+            margin-top: 15px;
+            color: #4a5568;
+        }
+        
+        .file-list {
+            margin-top: 20px;
+        }
+        
+        .file-item {
+            background: #edf2f7;
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .file-name {
+            font-weight: 500;
+            color: #2d3748;
+        }
+        
+        .file-size {
+            font-size: 0.85rem;
+            color: #718096;
+        }
+        
+        .remove-file {
+            background: #fc8181;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 4px 12px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        
+        .options {
+            margin-top: 20px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .option-group {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .option-group label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #4a5568;
+            margin-bottom: 8px;
+        }
+        
+        .option-group input, .option-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 0.9rem;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 40px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .progress-bar {
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+            border-radius: 10px;
+        }
+        
+        .progress-text {
+            text-align: center;
+            margin-top: 10px;
+            color: #4a5568;
+            font-size: 0.9rem;
+        }
+        
+        .result-area {
+            margin-top: 20px;
+        }
+        
+        .result-tabs {
+            display: flex;
+            gap: 10px;
+            border-bottom: 2px solid #e2e8f0;
+            margin-bottom: 20px;
+        }
+        
+        .result-tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            color: #718096;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .result-tab.active {
+            color: #667eea;
+            border-bottom: 2px solid #667eea;
+            margin-bottom: -2px;
+        }
+        
+        .result-content {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+        }
+        
+        .segment-item {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .segment-time {
+            font-size: 0.75rem;
+            color: #718096;
+            margin-bottom: 5px;
+        }
+        
+        .segment-text {
+            color: #2d3748;
+            line-height: 1.5;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .btn-small {
+            background: #edf2f7;
+            color: #4a5568;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-small:hover {
+            background: #e2e8f0;
+        }
+        
+        .error-message {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+        
+        .success-message {
+            background: #c6f6d5;
+            color: #22543d;
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+        
+        .badge {
+            display: inline-block;
+            background: #e2e8f0;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            color: #4a5568;
+            margin-left: 8px;
+        }
+        
+        @media (max-width: 768px) {
+            .card {
+                padding: 20px;
+            }
+            
+            .options {
+                flex-direction: column;
+            }
+            
+            .header h1 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎙️ 智能字幕生成器</h1>
+            <p>基于 FunASR Paraformer 的高准确率语音识别 | 支持视频/音频转字幕</p>
+        </div>
+        
+        <div class="card">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <div>点击或拖拽文件到此区域上传</div>
+                <div class="file-info">支持 MP4, AVI, MOV, MKV, MP3, WAV, FLAC, M4A 等格式</div>
+                <input type="file" id="fileInput" multiple style="display: none;" accept="video/*,audio/*">
+            </div>
+            
+            <div class="file-list" id="fileList"></div>
+            
+            <div class="options">
+                <div class="option-group">
+                    <label>🔧 输出格式</label>
+                    <select id="outputFormat">
+                        <option value="text">纯文本</option>
+                        <option value="srt">SRT 字幕</option>
+                        <option value="both" selected>文本 + SRT</option>
+                    </select>
+                </div>
+                <div class="option-group">
+                    <label>📝 热词（逗号分隔，可选）</label>
+                    <input type="text" id="hotwords" placeholder="例如: 人工智能,深度学习,机器学习">
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px; text-align: center;">
+                <button class="btn" id="uploadBtn">🚀 开始识别</button>
+                <button class="btn-small" id="clearBtn" style="margin-left: 12px;">🗑️ 清空列表</button>
+            </div>
+            
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text" id="progressText">处理中...</div>
+            </div>
+        </div>
+        
+        <div class="card" id="resultCard" style="display: none;">
+            <div class="result-tabs">
+                <div class="result-tab active" data-tab="text">📄 识别文本</div>
+                <div class="result-tab" data-tab="segments">📝 时间轴片段</div>
+                <div class="result-tab" data-tab="srt">🎬 SRT 字幕</div>
+            </div>
+            <div class="result-content" id="resultContent"></div>
+            <div class="action-buttons" id="actionButtons"></div>
+        </div>
+    </div>
+    
+    <script>
+        let selectedFiles = [];
+        let currentResult = null;
+        
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileListDiv = document.getElementById('fileList');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const resultCard = document.getElementById('resultCard');
+        const resultContent = document.getElementById('resultContent');
+        const actionButtons = document.getElementById('actionButtons');
+        const outputFormat = document.getElementById('outputFormat');
+        const hotwordsInput = document.getElementById('hotwords');
+        
+        // 文件上传区域事件
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = Array.from(e.dataTransfer.files);
+            addFiles(files);
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            addFiles(Array.from(e.target.files));
+            fileInput.value = '';
+        });
+        
+        function addFiles(files) {
+            const validExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', 
+                                      '.mp3', '.wav', '.flac', '.m4a', '.ogg', '.aac'];
+            
+            for (const file of files) {
+                const ext = '.' + file.name.split('.').pop().toLowerCase();
+                if (validExtensions.includes(ext) && !selectedFiles.find(f => f.name === file.name)) {
+                    selectedFiles.push(file);
+                }
+            }
+            renderFileList();
+        }
+        
+        function renderFileList() {
+            if (selectedFiles.length === 0) {
+                fileListDiv.innerHTML = '';
+                return;
+            }
+            
+            fileListDiv.innerHTML = selectedFiles.map((file, idx) => `
+                <div class="file-item">
+                    <div>
+                        <div class="file-name">${escapeHtml(file.name)}</div>
+                        <div class="file-size">${formatFileSize(file.size)}</div>
+                    </div>
+                    <button class="remove-file" onclick="removeFile(${idx})">移除</button>
+                </div>
+            `).join('');
+        }
+        
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            renderFileList();
+        }
+        
+        clearBtn.addEventListener('click', () => {
+            selectedFiles = [];
+            renderFileList();
+            resultCard.style.display = 'none';
+            currentResult = null;
+        });
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        uploadBtn.addEventListener('click', async () => {
+            if (selectedFiles.length === 0) {
+                alert('请先选择文件');
+                return;
+            }
+            
+            uploadBtn.disabled = true;
+            progressContainer.style.display = 'block';
+            progressFill.style.width = '0%';
+            
+            const results = [];
+            const total = selectedFiles.length;
+            
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                progressFill.style.width = `${(i / total) * 100}%`;
+                progressText.textContent = `正在处理: ${file.name} (${i+1}/${total})`;
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const format = outputFormat.value;
+                if (format === 'srt' || format === 'both') {
+                    formData.append('return_srt', 'true');
+                }
+                
+                const hotwords = hotwordsInput.value.trim();
+                if (hotwords) {
+                    formData.append('hotwords', hotwords);
+                }
+                
+                try {
+                    const response = await fetch('/recognize', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await response.json();
+                    
+                    if (data.code === 0) {
+                        results.push({
+                            filename: file.name,
+                            text: data.text,
+                            srt: data.srt || null,
+                            segments: data.segments || []
+                        });
+                    } else {
+                        results.push({
+                            filename: file.name,
+                            error: data.error || '识别失败'
+                        });
+                    }
+                } catch (err) {
+                    results.push({
+                        filename: file.name,
+                        error: err.message
+                    });
+                }
+            }
+            
+            progressFill.style.width = '100%';
+            progressText.textContent = '处理完成！';
+            
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+            }, 2000);
+            
+            uploadBtn.disabled = false;
+            
+            if (results.length > 0) {
+                currentResult = results[0]; // 显示第一个结果
+                displayResult(currentResult);
+                resultCard.style.display = 'block';
+            }
+        });
+        
+        function displayResult(result) {
+            const activeTab = document.querySelector('.result-tab.active').dataset.tab;
+            
+            if (result.error) {
+                resultContent.innerHTML = `<div class="error-message">❌ 错误: ${escapeHtml(result.error)}</div>`;
+                actionButtons.innerHTML = '';
+                return;
+            }
+            
+            if (activeTab === 'text') {
+                resultContent.innerHTML = `<div style="white-space: pre-wrap;">${escapeHtml(result.text || '无识别结果')}</div>`;
+                actionButtons.innerHTML = `
+                    <button class="btn-small" onclick="copyToClipboard('${escapeHtml(result.text || '').replace(/'/g, "\\'")}')">📋 复制文本</button>
+                `;
+            } else if (activeTab === 'segments' && result.segments) {
+                if (result.segments.length === 0) {
+                    resultContent.innerHTML = '<div>无时间轴片段</div>';
+                } else {
+                    resultContent.innerHTML = result.segments.map(seg => `
+                        <div class="segment-item">
+                            <div class="segment-time">${formatTime(seg.start)} → ${formatTime(seg.end)}</div>
+                            <div class="segment-text">${escapeHtml(seg.text)}</div>
+                        </div>
+                    `).join('');
+                }
+                actionButtons.innerHTML = '';
+            } else if (activeTab === 'srt' && result.srt) {
+                resultContent.innerHTML = `<pre style="font-family: monospace; white-space: pre-wrap;">${escapeHtml(result.srt)}</pre>`;
+                actionButtons.innerHTML = `
+                    <button class="btn-small" onclick="downloadSRT()">💾 下载 SRT 文件</button>
+                    <button class="btn-small" onclick="copyToClipboard(${JSON.stringify(result.srt)})">📋 复制 SRT</button>
+                `;
+            } else {
+                resultContent.innerHTML = '<div>无可用结果</div>';
+                actionButtons.innerHTML = '';
+            }
+        }
+        
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 1000);
+            return `${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')},${ms.toString().padStart(3,'0')}`;
+        }
+        
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('已复制到剪贴板');
+            }).catch(() => {
+                alert('复制失败');
+            });
+        }
+        
+        function downloadSRT() {
+            if (currentResult && currentResult.srt) {
+                const blob = new Blob([currentResult.srt], {type: 'text/plain'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'subtitle.srt';
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        }
+        
+        // Tab 切换
+        document.querySelectorAll('.result-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.result-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                if (currentResult) {
+                    displayResult(currentResult);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

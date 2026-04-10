@@ -1,0 +1,29 @@
+# FunASR-Paraformer 语音识别项目依赖
+# 安装命令: pip install -r requirements.txt
+
+# 核心 ASR 框架
+funasr>=1.0.0
+modelscope>=1.10.0
+
+# 深度学习框架
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# 音频处理
+librosa>=0.10.0
+soundfile>=0.12.0
+scipy>=1.10.0
+
+# 视频音频提取
+ffmpeg-python>=0.2.0
+
+# Web 服务
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6
+
+# 工具库
+numpy>=1.24.0
+
+#降噪
+noisereduce
