@@ -17,7 +17,7 @@ HOP_LENGTH = 160
 
 # ===================== 模型配置 =====================
 # Paraformer 模型选择（推荐 paraformer-zh 或 paraformer-zh-small）
-PARAFORMER_MODEL = "iic/SenseVoiceSmall"  # 可选: "paraformer-zh", "paraformer-zh-small"，"iic/SenseVoiceSmall"
+PARAFORMER_MODEL = "paraformer-zh"  # 可选: "paraformer-zh", "paraformer-zh-small"，"iic/SenseVoiceSmall"
 PARAFORMER_REVISION = "v2.0.4"
 MODEL_HUB = "ms" #可选："hf",Hugging Face 源（速度：几百K～2MB/s，慢）
 

@@ -1,5 +1,31 @@
-asr/__pycache__/paraformer_engine.cpython-312.pyc
-__pycache__/config.cpython-312.pyc
-asr/__pycache__/paraformer_engine.cpython-312.pyc
-output/subtitles/EBOD-556-U_20260410_224035.srt
-asr/__pycache__/paraformer_engine.cpython-312.pyc
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# 你的输出文件夹
+output/
+outputs/
+result/
+results/
+
+# 模型缓存（你放模型的目录，可选忽略）
+# funasr_models/
+# models/
+
+# 日志与临时文件
+*.log
+*.tmp
+*.temp
+temp/
+tmp/
+
+# 系统垃圾
+.DS_Store
+Thumbs.db
+*.bak
