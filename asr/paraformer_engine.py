@@ -60,10 +60,28 @@ logger = get_logger()
 class RecognitionSegment:
     """识别片段"""
 
-    text: str
+    text: str  # 原始文本（无标点，用于时间戳对齐）
     start: float  # 开始时间(秒)
     end: float  # 结束时间(秒)
+    text_with_punc: Optional[str] = None  # 标点恢复后的文本（用于显示）
     confidence: Optional[float] = None
+    timestamps: Optional[List[List[int]]] = None  # 原始时间戳
+
+
+@dataclass
+class WordTimestamp:
+    """词级别时间戳"""
+    word: str
+    start_ms: int  # 毫秒
+    end_ms: int    # 毫秒
+    
+    @property
+    def start_sec(self) -> float:
+        return self.start_ms / 1000.0
+    
+    @property
+    def end_sec(self) -> float:
+        return self.end_ms / 1000.0
 
 
 class ParaformerEngine:
@@ -353,9 +371,6 @@ class ParaformerEngine:
         # 加载音频
         audio, sr = self._load_audio(audio_path)
 
-        # 加载音频
-        audio, sr = self._load_audio(audio_path)
-
         # 降噪已禁用（经测试降噪会降低识别准确率）
         # 如需启用，取消下方注释
         # try:
@@ -438,27 +453,48 @@ class ParaformerEngine:
                             hotwords=hotwords,
                             output_timestamp=True,
                         )
+                # logger.info(f"识别结果: {res}")
 
                 if res and len(res) > 0:
-                    text = res[0].get("text", "")
-                    if text:
+                    original_text = res[0].get("text", "")
+                    timestamp = res[0].get("timestamp", None)  # 提取时间戳
+
+                    if original_text:
                         # 过滤 SenseVoice 特殊标记 <|xxx|>
                         import re
 
-                        text = re.sub(r"<\|[^|]*\|>", "", text)
-                        text = text.strip()
+                        original_text = re.sub(r"<\|[^|]*\|>", "", original_text)
+                        original_text = original_text.strip()
 
-                        if text:  # 过滤后还有内容才添加
-                            # 应用标点恢复
-                            text = self._apply_punctuation(text)
-                            results.append(
-                                RecognitionSegment(
-                                    text=text,
-                                    start=seg_start,
-                                    end=seg_end,
-                                    confidence=res[0].get("confidence", None),
+                        if original_text:  # 过滤后还有内容才添加
+                            # 如果有精确时间戳，按原始文本分词
+                            if timestamp and len(timestamp) > 0:
+
+                                final_text = self._apply_punctuation(original_text)
+                                
+                                results.append(
+                                        RecognitionSegment(
+                                            text=original_text,  # ← 原始文本
+                                            start=seg_start,
+                                            end=seg_end,
+                                            text_with_punc=final_text,  # 标点恢复后的文本
+                                            confidence=res[0].get("confidence", None),
+                                            timestamps=timestamp,  # 原始时间戳
+                                        )
+                                )       
+                            else:
+                                # 没有时间戳，使用整个片段的时间
+                                final_text = self._apply_punctuation(original_text)
+                                results.append(
+                                    RecognitionSegment(
+                                        text=original_text,  # ← 原始文本
+                                        start=seg_start,
+                                        end=seg_end,
+                                        text_with_punc=final_text,  # 标点恢复后的文本
+                                        confidence=res[0].get("confidence", None),
+                                        timestamps=None,
+                                    )
                                 )
-                            )
             except Exception as e:
                 logger.error(f"片段识别失败 [{seg_start:.2f}-{seg_end:.2f}]: {e}")
             finally:
@@ -478,9 +514,9 @@ class ParaformerEngine:
     ) -> List[RecognitionSegment]:
         """
         生成带时间轴的字幕片段
-        使用30秒分段 + 按标点智能拆分
+        优先使用模型返回的精确时间戳按句子分拆，如果没有则使用按标点智能拆分
         """
-        # 获取识别结果（60秒一段）
+        # 获取识别结果（包含精确时间戳）
         segments = self.transcribe_file(
             audio_path, return_timestamps=True, hotwords=hotwords
         )
@@ -489,15 +525,114 @@ class ParaformerEngine:
             return []
 
         final_segments = []
+        import re
 
         for seg in segments:
+            logger.info(f"检查片段: text='{seg.text}',text_with_punc='{seg.text_with_punc}', timestamps存在={seg.timestamps is not None}, 长度={len(seg.timestamps) if seg.timestamps else 0}")
+            logger.info(f"处理片段: '{seg.start:.2f}-{seg.end:.2f}' '{seg.text}'")
+            # 如果有精确时间戳（词级别），基于时间戳按句子分拆
+            if seg.timestamps is not None and len(seg.timestamps) > 0:
+                # 将文本分词：优先按空格，如果没有空格则按字符（中文场景）
+                timestamps = seg.timestamps
+
+                # 检查文本中是否有空格
+                if ' ' in seg.text:
+                    words = seg.text.split()
+                else:
+                    # 中文场景：按字符拆分
+                    words = list(seg.text)  # 每个字符单独作为一个词
+                    logger.info(f"文本无空格，按字符拆分，得到 {len(words)} 个字符")
+
+                # 确保词数和时间戳数量一致
+                if len(words) == len(timestamps):
+                    # 使用 text_with_punc 中的标点符号来拆分
+                    text_with_punc = getattr(seg, 'text_with_punc', None)
+
+                    if text_with_punc is None or not text_with_punc:
+                        # 没有标点恢复文本，输出整个文本作为一条字幕
+                        sentence_text = seg.text  # 或 seg.text_with_punc
+                        start_ms = timestamps[0][0]
+                        end_ms = timestamps[-1][1]
+                        final_segments.append(
+                            RecognitionSegment(
+                                text=sentence_text,
+                                start=seg.start + start_ms / 1000.0,
+                                end=seg.start + end_ms / 1000.0,
+                                confidence=seg.confidence,
+                                timestamps=timestamps,
+                            )
+                        )
+                    else:
+                        # 循环处理：每次找第一个标点符号，取出符号前的文本和时间戳
+                        remaining_text = text_with_punc
+                        word_idx = 0
+                        char_pos = 0
+
+                        while remaining_text:
+                            # 查找第一个标点符号的位置
+                            match = re.search(r'[。！？；，、,.]', remaining_text)
+
+                            if not match:
+                                # 没有标点符号了，剩余所有词作为一个片段
+                                if word_idx < len(words):
+                                    remaining_words = words[word_idx:]
+                                    remaining_timestamps = timestamps[word_idx:]
+                                    sentence_text = ''.join(remaining_words)
+                                    start_ms = remaining_timestamps[0][0]
+                                    end_ms = remaining_timestamps[-1][1]
+                                    final_segments.append(
+                                        RecognitionSegment(
+                                            text=sentence_text,
+                                            start=seg.start + start_ms / 1000.0,
+                                            end=seg.start + end_ms / 1000.0,
+                                            confidence=seg.confidence,
+                                            timestamps=remaining_timestamps,
+                                        )
+                                    )
+                                break
+
+                            # 获取标点符号前的内容
+                            punc_pos = match.start()
+                            segment_text = remaining_text[:punc_pos]  # 标点前的文本
+
+                            # 计算这个片段包含多少个词
+                            segment_words = []
+                            segment_timestamps = []
+                            char_count = 0
+
+                            while word_idx < len(words) and char_count < len(segment_text):
+                                word = words[word_idx]
+                                segment_words.append(word)
+                                segment_timestamps.append(timestamps[word_idx])
+                                char_count += len(word)
+                                word_idx += 1
+
+                            # 添加这个片段
+                            if segment_words:
+                                start_ms = segment_timestamps[0][0]
+                                end_ms = segment_timestamps[-1][1]
+                                final_segments.append(
+                                    RecognitionSegment(
+                                        text="".join(segment_words),
+                                        start=seg.start + start_ms / 1000.0,
+                                        end=seg.start + end_ms / 1000.0,
+                                        confidence=seg.confidence,
+                                        timestamps=segment_timestamps,
+                                    )
+                                )
+
+                            # 移除已处理的部分（包括标点符号）
+                            remaining_text = remaining_text[punc_pos + 1 :]
+                else:
+                    # 词数不匹配，使用整个片段
+                    final_segments.append(seg)
+                continue
+
+            # 没有精确时间戳，使用按标点符号智能拆分（降级方案）
             text = seg.text
             start_time = seg.start
             end_time = seg.end
             duration = end_time - start_time
-
-            # 按标点符号拆分句子
-            import re
 
             # 按句号、感叹号、问号、分号、逗号、顿号拆分
             sentences = re.split(r"(?<=[。！？；，、])\s*", text)
@@ -517,6 +652,7 @@ class ParaformerEngine:
                             start=current_start,
                             end=sent_end,
                             confidence=seg.confidence,
+                            timestamps=None,
                         )
                     )
                     current_start = sent_end
@@ -539,6 +675,7 @@ class ParaformerEngine:
                                     start=part_start,
                                     end=part_end,
                                     confidence=seg.confidence,
+                                    timestamps=None,
                                 )
                             )
                 else:

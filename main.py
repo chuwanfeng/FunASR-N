@@ -44,7 +44,7 @@ OUTPUT_DIR = Path(__file__).parent / "output" / "subtitles"
 app = FastAPI(
     title="语音转字幕服务",
     description="基于 FunASR Paraformer 的高准确率语音识别，支持视频/音频转字幕",
-    version="2.0.0",
+    version="2.3.0",
 )
 
 # 初始化 ASR 引擎
@@ -170,7 +170,7 @@ def process_file(
             logger.info(f"字幕已保存: {srt_filepath}")
 
         # 使用已经获取的分段结果
-        from asr.paraformer_engine import RecognitionSegment
+        #from asr.paraformer_engine import RecognitionSegment
 
         segments = [
             RecognitionSegment(text=seg["text"], start=seg["start"], end=seg["end"])
