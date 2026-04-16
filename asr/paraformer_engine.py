@@ -528,8 +528,8 @@ class ParaformerEngine:
         import re
 
         for seg in segments:
-            logger.info(f"检查片段: text='{seg.text}',text_with_punc='{seg.text_with_punc}', timestamps存在={seg.timestamps is not None}, 长度={len(seg.timestamps) if seg.timestamps else 0}")
-            logger.info(f"处理片段: '{seg.start:.2f}-{seg.end:.2f}' '{seg.text}'")
+            #logger.info(f"检查片段: text='{seg.text}',text_with_punc='{seg.text_with_punc}', timestamps存在={seg.timestamps is not None}, 长度={len(seg.timestamps) if seg.timestamps else 0}")
+            #logger.info(f"处理片段: '{seg.start:.2f}-{seg.end:.2f}' '{seg.text}'")
             # 如果有精确时间戳（词级别），基于时间戳按句子分拆
             if seg.timestamps is not None and len(seg.timestamps) > 0:
                 # 将文本分词：优先按空格，如果没有空格则按字符（中文场景）
@@ -541,7 +541,7 @@ class ParaformerEngine:
                 else:
                     # 中文场景：按字符拆分
                     words = list(seg.text)  # 每个字符单独作为一个词
-                    logger.info(f"文本无空格，按字符拆分，得到 {len(words)} 个字符")
+                    #logger.info(f"文本无空格，按字符拆分，得到 {len(words)} 个字符")
 
                 # 确保词数和时间戳数量一致
                 if len(words) == len(timestamps):
