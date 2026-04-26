@@ -14,6 +14,7 @@ FunASR 模型微调模块
 
 import json
 import os
+import re
 import shutil
 import threading
 import time
