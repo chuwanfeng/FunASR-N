@@ -1,0 +1,2 @@
+{"audio_hash": "70ada60f087010eb", "segment_id": 2, "original_text": "幸福好吃啊啊", "corrected_text": "幸福好爽啊啊", "start": 6.61, "end": 8.41, "error_type": "recognition", "timestamp": "2026-04-27T01:51:14.409501", "confidence": null}
+{"audio_hash": "70ada60f087010eb", "segment_id": 3, "original_text": "好吃", "corrected_text": "好爽", "start": 8.87, "end": 9.89, "error_type": "recognition", "timestamp": "2026-04-27T01:51:14.416412", "confidence": null}

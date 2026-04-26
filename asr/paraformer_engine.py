@@ -45,6 +45,7 @@ from config import (
     USE_VAD,
     VAD_MIN_SILENCE_DURATION,
     VAD_SPEED_UP,
+    VAD_OVERLAP_EXTENSION,
     ENABLE_PUNCTUATION,
     PUNCTUATION_MODEL,
     ASR_ENGINE,
@@ -262,8 +263,13 @@ class ParaformerEngine:
                 if len(seg) >= 2:
                     start = round(float(seg[0]) / 1000.0, 3)  # 👈 除以1000！毫秒→秒
                     end = round(float(seg[1]) / 1000.0, 3)  # 👈 除以1000！
+                    
+                    # 重叠扩展：避免截断首尾语音
+                    if VAD_OVERLAP_EXTENSION > 0:
+                        start = max(0.0, start - VAD_OVERLAP_EXTENSION)
+                        # end 扩展在后续处理中处理（避免越界）
 
-                    # 过滤：时长至少 VAD_MIN_SILENCE_DURATION 秒（默认0.3s）
+                    # 过滤：时长至少 VAD_MIN_SILENCE_DURATION 秒（默认0.5s）
                     if end > start and (end - start) >= VAD_MIN_SILENCE_DURATION:
                         speech_segments.append((start, end))
 
@@ -370,10 +376,14 @@ class ParaformerEngine:
         # 逐段识别
         results = []
         processed_count = 0
-        for seg_start, seg_end in segments:
-            # 提取片段音频
+        for i, (seg_start, seg_end) in enumerate(segments):
+            # 提取片段音频（应用重叠扩展，除了最后一段）
+            actual_end = seg_end
+            if VAD_OVERLAP_EXTENSION > 0 and i < len(segments) - 1:
+                actual_end = min(seg_end + VAD_OVERLAP_EXTENSION, total_duration)
+            
             start_sample = int(seg_start * sr)
-            end_sample = int(seg_end * sr)
+            end_sample = int(actual_end * sr)
             seg_audio = audio[start_sample:end_sample]
 
             if len(seg_audio) < sr * 0.3:  # 忽略短于 0.3s 的片段
@@ -413,7 +423,7 @@ class ParaformerEngine:
                                         RecognitionSegment(
                                             text=original_text,  # ← 原始文本
                                             start=seg_start,
-                                            end=seg_end,
+                                            end=actual_end,  # 使用扩展后的结束时间
                                             text_with_punc=final_text,  # 标点恢复后的文本
                                             confidence=res[0].get("confidence", None),
                                             timestamps=timestamp,  # 原始时间戳
@@ -426,7 +436,7 @@ class ParaformerEngine:
                                     RecognitionSegment(
                                         text=original_text,  # ← 原始文本
                                         start=seg_start,
-                                        end=seg_end,
+                                        end=actual_end,  # 使用扩展后的结束时间
                                         text_with_punc=final_text,  # 标点恢复后的文本
                                         confidence=res[0].get("confidence", None),
                                         timestamps=None,

@@ -46,19 +46,32 @@ from config import (
     ENGINE_DISPLAY_NAME,
 )
 from tools.utils import get_logger
-from feedback_store import (
-    save_feedback, 
-    load_all_feedback, 
+from feedback import (
+    save_feedback,
+    load_all_feedback,
     extract_hotwords,
     update_config_hotwords,
+    get_feedback_stats,
     FeedbackEntry,
     get_audio_hash,
+)
+from finetune import (
+    finetune_manager,
+    prepare_finetune_data,
+    start_finetune_task,
+    get_finetune_status,
+    get_finetune_readiness,
+    save_audio_mapping,
 )
 
 logger = get_logger()
 
 # 输出目录配置（持久化存储）
 OUTPUT_DIR = Path(__file__).parent / "output" / "subtitles"
+
+# 音频持久化目录（用于微调）
+AUDIO_ARCHIVE_DIR = Path(__file__).parent / "output" / "audio_archive"
+AUDIO_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
 # 根据配置选择 ASR 引擎
 _asr_engine_map = {
@@ -261,6 +274,18 @@ def process_file(
         ]
         # 保存音频哈希，用于后续反馈关联
         result["audio_hash"] = get_audio_hash(audio_path)
+        
+        # 持久化保存音频文件（用于后续微调）
+        archived_audio_path = AUDIO_ARCHIVE_DIR / f"{result['audio_hash']}.wav"
+        if not archived_audio_path.exists() and audio_path != str(archived_audio_path):
+            try:
+                shutil.copy2(audio_path, archived_audio_path)
+                logger.info(f"音频已持久化保存: {archived_audio_path}")
+            except Exception as e:
+                logger.warning(f"音频持久化失败: {e}")
+        
+        # 保存音频映射用于后续微调
+        save_audio_mapping(result["audio_hash"], str(archived_audio_path) if archived_audio_path.exists() else audio_path)
 
         if progress_callback:
             progress_callback(100, 100, "处理完成")
@@ -270,7 +295,7 @@ def process_file(
         result["error"] = str(e)
 
     finally:
-        # 清理临时音频文件
+        # 清理临时音频文件（视频提取的临时音频，不删除原始上传文件）
         if temp_audio_path and os.path.exists(temp_audio_path):
             try:
                 os.unlink(temp_audio_path)
@@ -293,37 +318,40 @@ async def startup_event():
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    """返回前端页面"""
+    """返回语音识别页面"""
     html_path = Path(__file__).parent / "templates" / "index.html"
     if not html_path.exists():
-        return HTMLResponse(
-            content="""
-        <html>
-        <head><title>语音转字幕</title></head>
-        <body>
-            <h1>语音转字幕服务</h1>
-            <p>模板文件不存在，请创建 templates/index.html</p>
-            <hr>
-            <h3>API 端点:</h3>
-            <ul>
-                <li>POST /recognize - 单文件识别</li>
-                <li>POST /batch-recognize - 批量识别</li>
-                <li>GET /health - 健康检查</li>
-            </ul>
-        </body>
-        </html>
-        """,
-            status_code=200,
-        )
-
+        return HTMLResponse(content="<h1>模板文件不存在</h1>", status_code=200)
     with open(html_path, "r", encoding="utf-8") as f:
-        html_content = f.read()
-    return HTMLResponse(content=html_content)
+        return HTMLResponse(content=f.read())
+
+
+@app.get("/hotwords.html", response_class=HTMLResponse)
+async def hotwords_page():
+    """返回热词管理页面"""
+    html_path = Path(__file__).parent / "templates" / "hotwords.html"
+    if not html_path.exists():
+        return HTMLResponse(content="<h1>模板文件不存在</h1>", status_code=200)
+    with open(html_path, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+
+@app.get("/finetune.html", response_class=HTMLResponse)
+async def finetune_page():
+    """返回模型微调页面"""
+    html_path = Path(__file__).parent / "templates" / "finetune.html"
+    if not html_path.exists():
+        return HTMLResponse(content="<h1>模板文件不存在</h1>", status_code=200)
+    with open(html_path, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
 
 
 @app.get("/health")
 async def health_check():
     """健康检查接口"""
+    # 统计持久化音频数量
+    archived_count = len(list(AUDIO_ARCHIVE_DIR.glob("*.wav"))) if AUDIO_ARCHIVE_DIR.exists() else 0
+    
     return JSONResponse(
         {
             "status": "ok",
@@ -336,6 +364,8 @@ async def health_check():
             "qwen_ready": QWEN_AVAILABLE,
             "vad_enabled": USE_VAD,
             "punctuation_enabled": ENABLE_PUNCTUATION,
+            "audio_archive_count": archived_count,
+            "audio_archive_dir": str(AUDIO_ARCHIVE_DIR),
         }
     )
 
@@ -373,12 +403,16 @@ async def recognize(
         with open(temp_path, "wb") as f:
             f.write(content)
 
-        # 处理热词
+        # 处理热词（支持动态更新，无需重启）
         hotword_list = None
         if hotwords:
             hotword_list = [h.strip() for h in hotwords.split(",") if h.strip()]
         else:
-            hotword_list = HOTWORDS if HOTWORDS else None
+            # 每次读取最新热词（支持热更新）
+            import importlib
+            import config
+            importlib.reload(config)
+            hotword_list = config.HOTWORDS if config.HOTWORDS else None
 
         # 识别
         result = process_file(str(temp_path), file.filename, hotword_list)
@@ -432,8 +466,11 @@ async def batch_recognize(
                 with open(temp_path, "wb") as f:
                     f.write(content)
 
+                import importlib
+                import config
+                importlib.reload(config)
                 result = process_file(
-                    str(temp_path), file.filename, HOTWORDS if HOTWORDS else None
+                    str(temp_path), file.filename, config.HOTWORDS if config.HOTWORDS else None
                 )
 
                 results.append(
@@ -496,6 +533,12 @@ async def generate_srt_endpoint(
         hotword_list = None
         if hotwords:
             hotword_list = [h.strip() for h in hotwords.split(",") if h.strip()]
+        else:
+            # 每次读取最新热词（支持热更新）
+            import importlib
+            import config
+            importlib.reload(config)
+            hotword_list = config.HOTWORDS if config.HOTWORDS else None
 
         # 生成 SRT
         asr_engine.initialize()
@@ -669,7 +712,12 @@ async def extract_and_update_hotwords(
             words_only = [w for w, _ in hotwords]
             if update_config_hotwords(words_only):
                 result["updated"] = True
-                result["message"] = "热词已更新到 config.py"
+                result["message"] = "热词已更新到 config.py，下次识别自动生效"
+                # 立即刷新内存热词
+                import importlib
+                import config
+                importlib.reload(config)
+                result["current_hotwords"] = config.HOTWORDS
             else:
                 result["updated"] = False
                 result["message"] = "热词更新失败"
@@ -698,6 +746,203 @@ async def list_subtitles():
     # 按修改时间倒序
     files.sort(key=lambda x: x["modified"], reverse=True)
     return JSONResponse({"code": 0, "files": files})
+
+
+@app.get("/feedback/stats")
+async def feedback_statistics():
+    """获取反馈统计信息"""
+    try:
+        stats = get_feedback_stats()
+        return JSONResponse({"code": 0, "data": stats})
+    except Exception as e:
+        logger.error(f"统计获取失败: {e}")
+        return JSONResponse({"code": 1, "error": str(e)})
+
+
+@app.get("/hotwords")
+async def get_hotwords():
+    """获取当前热词列表"""
+    try:
+        import importlib
+        import config
+        importlib.reload(config)
+        return JSONResponse({
+            "code": 0,
+            "hotwords": config.HOTWORDS if config.HOTWORDS else [],
+            "count": len(config.HOTWORDS) if config.HOTWORDS else 0
+        })
+    except Exception as e:
+        logger.error(f"获取热词失败: {e}")
+        return JSONResponse({"code": 1, "error": str(e)})
+
+
+@app.post("/hotwords/extract")
+async def extract_and_update_hotwords(
+    min_frequency: int = Form(1),
+    max_hotwords: int = Form(50),
+):
+    """
+    手动提取热词并写入 config.py
+    
+    Args:
+        min_frequency: 最小出现次数（默认1，只要有反馈就提取）
+        max_hotwords: 最大热词数量
+        
+    Returns:
+        提取的热词列表和写入状态
+    """
+    try:
+        # 提取热词
+        hotwords_with_freq = extract_hotwords(
+            min_frequency=min_frequency,
+            max_hotwords=max_hotwords
+        )
+        
+        if not hotwords_with_freq:
+            return JSONResponse({
+                "code": 0,
+                "message": "暂无满足条件的热词",
+                "hotwords": [],
+                "updated": False,
+            })
+        
+        words_only = [w for w, _ in hotwords_with_freq]
+        
+        # 写入 config.py
+        success = update_config_hotwords(words_only)
+        
+        if success:
+            # 刷新内存
+            import importlib
+            import config
+            importlib.reload(config)
+            
+            return JSONResponse({
+                "code": 0,
+                "message": f"成功提取 {len(words_only)} 个热词并写入配置",
+                "hotwords": words_only,
+                "frequencies": hotwords_with_freq,
+                "updated": True,
+            })
+        else:
+            return JSONResponse({
+                "code": 1,
+                "error": "热词写入失败，请检查日志",
+                "hotwords": words_only,
+                "updated": False,
+            })
+            
+    except Exception as e:
+        logger.error(f"提取热词失败: {e}")
+        return JSONResponse({"code": 1, "error": str(e)})
+
+
+@app.get("/finetune/status")
+async def finetune_status():
+    """获取微调准备状态"""
+    try:
+        readiness = get_finetune_readiness()
+        return JSONResponse({
+            "code": 0,
+            "data": readiness
+        })
+    except Exception as e:
+        logger.error(f"获取微调状态失败: {e}")
+        return JSONResponse({"code": 1, "error": str(e)})
+
+
+@app.post("/finetune/start")
+async def finetune_start(
+    min_feedback: int = Form(10),
+    epochs: int = Form(3),
+    batch_size: int = Form(4),
+):
+    """
+    启动模型微调任务
+    
+    Args:
+        min_feedback: 最小反馈数量
+        epochs: 训练轮数
+        batch_size: 批次大小
+    """
+    try:
+        # 检查是否已有运行中的任务
+        current = finetune_manager.current_task
+        if current:
+            task = finetune_manager.get_task(current)
+            if task and task.status == "running":
+                return JSONResponse({
+                    "code": 1,
+                    "error": "已有运行中的微调任务",
+                    "task_id": current
+                })
+        
+        # 启动微调
+        config = {
+            "epochs": epochs,
+            "batch_size": batch_size,
+        }
+        task_id = start_finetune_task(
+            min_feedback_count=min_feedback,
+            config=config
+        )
+        
+        if task_id is None:
+            readiness = get_finetune_readiness()
+            return JSONResponse({
+                "code": 1,
+                "error": f"反馈数据不足，当前有效反馈: {readiness['valid_feedback']}/{min_feedback}",
+                "readiness": readiness
+            })
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "微调任务已启动",
+            "task_id": task_id
+        })
+    except Exception as e:
+        logger.error(f"启动微调失败: {e}")
+        return JSONResponse({"code": 1, "error": str(e)})
+
+
+@app.get("/finetune/task/{task_id}")
+async def finetune_task_status(task_id: str):
+    """查询微调任务状态"""
+    try:
+        status = get_finetune_status(task_id)
+        if status is None:
+            return JSONResponse({"code": 1, "error": "任务不存在"})
+        return JSONResponse({
+            "code": 0,
+            "data": status
+        })
+    except Exception as e:
+        logger.error(f"查询任务失败: {e}")
+        return JSONResponse({"code": 1, "error": str(e)})
+
+
+@app.get("/finetune/tasks")
+async def finetune_task_list(limit: int = 10):
+    """列出微调任务"""
+    try:
+        tasks = finetune_manager.list_tasks(limit)
+        return JSONResponse({
+            "code": 0,
+            "data": [
+                {
+                    "id": t.id,
+                    "status": t.status,
+                    "progress": t.progress,
+                    "message": t.message,
+                    "start_time": t.start_time,
+                    "end_time": t.end_time,
+                }
+                for t in tasks
+            ]
+        })
+    except Exception as e:
+        logger.error(f"列出任务失败: {e}")
+        return JSONResponse({"code": 1, "error": str(e)})
 
 
 if __name__ == "__main__":

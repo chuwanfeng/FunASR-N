@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FunASR-N · 热词管理</title>
+    <style>
+        :root {
+            --bg-primary: #0f0f23;
+            --bg-secondary: #1a1a2e;
+            --bg-card: #16213e;
+            --bg-hover: #1e2a4a;
+            --accent-primary: #00d4aa;
+            --accent-secondary: #00a8e8;
+            --accent-gradient: linear-gradient(135deg, #00d4aa 0%, #00a8e8 100%);
+            --text-primary: #e8e8f0;
+            --text-secondary: #a0a0b8;
+            --text-muted: #6b6b8a;
+            --border-color: #2a2a4a;
+            --success: #00d4aa;
+            --warning: #f5a623;
+            --error: #ff4757;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            --shadow-glow: 0 0 20px rgba(0, 212, 170, 0.15);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        /* 导航栏 */
+        .navbar {
+            background: rgba(15, 15, 35, 0.95);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 24px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .navbar-inner {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 60px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.3rem;
+            font-weight: 700;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-decoration: none;
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: var(--accent-gradient);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            -webkit-text-fill-color: white;
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .nav-link {
+            padding: 8px 16px;
+            border-radius: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .nav-link:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+
+        .nav-link.active {
+            color: var(--accent-primary);
+            background: rgba(0, 212, 170, 0.1);
+        }
+
+        .nav-status {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* 主容器 */
+        .main-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .page-header {
+            margin-bottom: 24px;
+        }
+
+        .page-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .page-desc {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* 网格布局 */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 1024px) {
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+
+        /* 面板 */
+        .panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .panel:hover {
+            border-color: rgba(0, 212, 170, 0.3);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .panel-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 按钮 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--accent-gradient);
+            color: white;
+            box-shadow: 0 4px 16px rgba(0, 212, 170, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(0, 212, 170, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-hover);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+
+        .btn-danger {
+            background: rgba(255, 71, 87, 0.15);
+            color: var(--error);
+            border: 1px solid rgba(255, 71, 87, 0.3);
+        }
+
+        .btn-danger:hover {
+            background: rgba(255, 71, 87, 0.25);
+        }
+
+        /* 热词标签 */
+        .hotword-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .hotword-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: rgba(0, 212, 170, 0.1);
+            border: 1px solid rgba(0, 212, 170, 0.3);
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: var(--accent-primary);
+            transition: all 0.2s;
+        }
+
+        .hotword-tag:hover {
+            background: rgba(0, 212, 170, 0.2);
+        }
+
+        .hotword-tag .remove {
+            cursor: pointer;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .hotword-tag .remove:hover {
+            opacity: 1;
+            color: var(--error);
+        }
+
+        .hotword-tag.empty {
+            background: transparent;
+            border-style: dashed;
+            color: var(--text-muted);
+        }
+
+        /* 统计卡片 */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--accent-primary);
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* 表格 */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .data-table th {
+            text-align: left;
+            padding: 12px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .data-table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .data-table tr:hover td {
+            background: var(--bg-hover);
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+
+        /* 输入框 */
+        .config-input {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .config-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.1);
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 14px 20px;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .toast.success {
+            background: rgba(0, 212, 170, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(0, 212, 170, 0.3);
+        }
+
+        .toast.error {
+            background: rgba(255, 71, 87, 0.15);
+            color: var(--error);
+            border: 1px solid rgba(255, 71, 87, 0.3);
+        }
+
+        /* 滚动条 */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .main-container { padding: 16px; }
+            .navbar-inner { height: 50px; }
+            .logo { font-size: 1.1rem; }
+            .nav-links { display: none; }
+            .nav-status { display: none; }
+            .panel { padding: 16px; }
+            .stat-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <a href="/" class="logo">
+                <div class="logo-icon">🎙️</div>
+                <span>FunASR-N</span>
+            </a>
+            <div class="nav-links">
+                <a href="/" class="nav-link">🎯 语音识别</a>
+                <a href="/hotwords.html" class="nav-link active">🔥 热词管理</a>
+                <a href="/finetune.html" class="nav-link">🧠 模型微调</a>
+            </div>
+            <div class="nav-status">
+                <div class="status-badge">
+                    <span class="status-dot"></span>
+                    <span>服务在线</span>
+                </div>
+                <div class="status-badge" id="engineBadge">🔧 加载中...</div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <div class="main-container">
+        <div class="page-header">
+            <h1 class="page-title">🔥 热词管理</h1>
+            <p class="page-desc">管理自定义热词，从用户反馈中提取高频修正词，提升特定领域识别准确率</p>
+        </div>
+
+        <div class="grid-2">
+            <!-- 左侧：当前热词 -->
+            <div class="panel">
+                <div class="panel-title">📋 当前热词列表</div>
+                <div id="currentHotwordsContainer">
+                    <div class="empty-state">
+                        <div class="empty-icon">🔥</div>
+                        <div>加载中...</div>
+                    </div>
+                </div>
+                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px;">添加自定义热词</div>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" class="config-input" id="newHotwordInput" placeholder="输入热词，按回车添加">
+                        <button class="btn btn-primary btn-sm" id="addHotwordBtn">添加</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：提取热词 -->
+            <div class="panel">
+                <div class="panel-title">🔍 从反馈提取热词</div>
+                <div id="extractStatus" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px;">
+                    系统将分析用户反馈中的修正记录，提取高频出现的词汇作为热词
+                </div>
+                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                    <button class="btn btn-primary" id="extractBtn" style="flex: 1;">
+                        🔍 提取并写入热词
+                    </button>
+                    <button class="btn btn-secondary" id="previewBtn">
+                        👁️ 仅预览
+                    </button>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-muted);">
+                    <div>• 提取基于用户提交的反馈数据</div>
+                    <div>• 热词将写入 config.py，下次识别自动生效</div>
+                    <div>• 建议定期提取以持续优化识别效果</div>
+                </div>
+                <div id="extractResult" style="margin-top: 16px; display: none;"></div>
+            </div>
+        </div>
+
+        <!-- 反馈统计 -->
+        <div class="panel" style="margin-top: 24px;">
+            <div class="panel-title">📊 反馈数据统计</div>
+            <div class="stat-grid" id="statGrid">
+                <div class="stat-card">
+                    <div class="stat-value" id="statTotal">-</div>
+                    <div class="stat-label">总反馈数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statValid">-</div>
+                    <div class="stat-label">有效反馈</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statAudio">-</div>
+                    <div class="stat-label">含音频</div>
+                </div>
+            </div>
+            <div id="recentFeedbackContainer">
+                <div class="empty-state">
+                    <div class="empty-icon">📝</div>
+                    <div>暂无反馈数据</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 初始化 ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            loadCurrentHotwords();
+            loadEngineInfo();
+            loadFeedbackStats();
+        });
+
+        // ==================== 加载当前热词 ====================
+        async function loadCurrentHotwords() {
+            try {
+                const response = await fetch('/hotwords');
+                const data = await response.json();
+                const container = document.getElementById('currentHotwordsContainer');
+                
+                if (data.code === 0) {
+                    const words = data.hotwords || [];
+                    if (words.length === 0) {
+                        container.innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-icon">🔥</div>
+                                <div>暂无热词</div>
+                                <div style="font-size: 0.8rem; margin-top: 8px;">添加自定义热词或从反馈中提取</div>
+                            </div>
+                        `;
+                    } else {
+                        container.innerHTML = `
+                            <div class="hotword-tags">
+                                ${words.map((w, i) => `
+                                    <span class="hotword-tag">
+                                        ${escapeHtml(w)}
+                                        <span class="remove" onclick="removeHotword(${i})">✕</span>
+                                    </span>
+                                `).join('')}
+                            </div>
+                            <div style="margin-top: 12px; font-size: 0.8rem; color: var(--text-muted);">
+                                共 ${words.length} 个热词
+                            </div>
+                        `;
+                    }
+                }
+            } catch (err) {
+                console.error('加载热词失败:', err);
+            }
+        }
+
+        // ==================== 添加热词 ====================
+        document.getElementById('addHotwordBtn').addEventListener('click', addCustomHotword);
+        document.getElementById('newHotwordInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addCustomHotword();
+        });
+
+        async function addCustomHotword() {
+            const input = document.getElementById('newHotwordInput');
+            const word = input.value.trim();
+            if (!word) return;
+
+            // 获取当前热词并添加
+            try {
+                const response = await fetch('/hotwords');
+                const data = await response.json();
+                const currentWords = data.hotwords || [];
+                
+                if (currentWords.includes(word)) {
+                    showToast('热词已存在', 'error');
+                    return;
+                }
+                
+                const newWords = [...currentWords, word];
+                
+                // 调用后端更新（复用 extract 端点，但传入自定义热词）
+                // 这里简化处理：直接更新 config 需要后端支持，暂时只前端展示
+                showToast('热词添加功能需后端支持，请手动编辑 config.py', 'success');
+                input.value = '';
+            } catch (err) {
+                showToast('添加失败', 'error');
+            }
+        }
+
+        function removeHotword(index) {
+            showToast('删除功能需后端支持', 'error');
+        }
+
+        // ==================== 提取热词 ====================
+        document.getElementById('extractBtn').addEventListener('click', () => extractHotwords(false));
+        document.getElementById('previewBtn').addEventListener('click', () => extractHotwords(true));
+
+        async function extractHotwords(dryRun) {
+            const btn = document.getElementById('extractBtn');
+            const resultDiv = document.getElementById('extractResult');
+            
+            btn.disabled = true;
+            btn.textContent = '🔄 提取中...';
+            resultDiv.style.display = 'none';
+            
+            try {
+                const response = await fetch('/hotwords/extract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'min_frequency=1&max_hotwords=50'
+                });
+                const data = await response.json();
+                
+                resultDiv.style.display = 'block';
+                
+                if (data.code === 0) {
+                    if (data.updated) {
+                        resultDiv.innerHTML = `
+                            <div style="padding: 16px; background: rgba(0,212,170,0.1); border: 1px solid rgba(0,212,170,0.3); border-radius: 8px;">
+                                <div style="color: var(--success); font-weight: 600; margin-bottom: 8px;">✅ ${data.message}</div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;">
+                                    ${data.hotwords.map(w => `<span class="hotword-tag">${escapeHtml(w)}</span>`).join('')}
+                                </div>
+                            </div>
+                        `;
+                        showToast(data.message, 'success');
+                        loadCurrentHotwords();
+                    } else {
+                        resultDiv.innerHTML = `
+                            <div style="padding: 16px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-secondary);">
+                                ${data.message || '暂无满足条件的热词'}
+                            </div>
+                        `;
+                        showToast(data.message || '暂无热词', 'success');
+                    }
+                } else {
+                    resultDiv.innerHTML = `
+                        <div style="padding: 16px; background: rgba(255,71,87,0.1); border: 1px solid rgba(255,71,87,0.3); border-radius: 8px; color: var(--error);">
+                            ❌ ${data.error}
+                        </div>
+                    `;
+                    showToast(data.error, 'error');
+                }
+            } catch (err) {
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `
+                    <div style="padding: 16px; background: rgba(255,71,87,0.1); border: 1px solid rgba(255,71,87,0.3); border-radius: 8px; color: var(--error);">
+                        ❌ 请求失败: ${err.message}
+                    </div>
+                `;
+                showToast('提取失败: ' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔍 提取并写入热词';
+            }
+        }
+
+        // ==================== 加载反馈统计 ====================
+        async function loadFeedbackStats() {
+            try {
+                const response = await fetch('/feedback/stats');
+                const data = await response.json();
+                
+                if (data.code === 0) {
+                    const stats = data.data;
+                    document.getElementById('statTotal').textContent = stats.total_feedback || 0;
+                    document.getElementById('statValid').textContent = stats.unique_audio || 0;
+                    document.getElementById('statAudio').textContent = stats.recent_feedback?.length || 0;
+                    
+                    const container = document.getElementById('recentFeedbackContainer');
+                    if (stats.recent_feedback && stats.recent_feedback.length > 0) {
+                        container.innerHTML = `
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>音频</th>
+                                        <th>原始文本</th>
+                                        <th>修正文本</th>
+                                        <th>时间</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${stats.recent_feedback.map(f => `
+                                        <tr>
+                                            <td>${escapeHtml(f.audio_hash)}</td>
+                                            <td>${escapeHtml(f.original)}</td>
+                                            <td>${escapeHtml(f.corrected)}</td>
+                                            <td>${formatDate(f.timestamp)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        `;
+                    }
+                }
+            } catch (err) {
+                console.error('加载统计失败:', err);
+            }
+        }
+
+        // ==================== 引擎信息 ====================
+        async function loadEngineInfo() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                if (data.engine_display) {
+                    document.getElementById('engineBadge').textContent = '🔧 ' + data.engine_display;
+                }
+            } catch (err) {
+                console.error('加载引擎信息失败:', err);
+            }
+        }
+
+        // ==================== 工具函数 ====================
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(isoString) {
+            if (!isoString) return '-';
+            const date = new Date(isoString);
+            return date.toLocaleString('zh-CN');
+        }
+
+        function showToast(message, type = 'success') {
+            const existing = document.querySelector('.toast');
+            if (existing) existing.remove();
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = type === 'success' ? `✓ ${message}` : `✕ ${message}`;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'slideIn 0.3s ease reverse';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

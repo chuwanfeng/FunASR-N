@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FunASR-N · 模型微调</title>
+    <style>
+        :root {
+            --bg-primary: #0f0f23;
+            --bg-secondary: #1a1a2e;
+            --bg-card: #16213e;
+            --bg-hover: #1e2a4a;
+            --accent-primary: #00d4aa;
+            --accent-secondary: #00a8e8;
+            --accent-gradient: linear-gradient(135deg, #00d4aa 0%, #00a8e8 100%);
+            --text-primary: #e8e8f0;
+            --text-secondary: #a0a0b8;
+            --text-muted: #6b6b8a;
+            --border-color: #2a2a4a;
+            --success: #00d4aa;
+            --warning: #f5a623;
+            --error: #ff4757;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            --shadow-glow: 0 0 20px rgba(0, 212, 170, 0.15);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        /* 导航栏 */
+        .navbar {
+            background: rgba(15, 15, 35, 0.95);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 24px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .navbar-inner {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 60px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.3rem;
+            font-weight: 700;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-decoration: none;
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: var(--accent-gradient);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            -webkit-text-fill-color: white;
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .nav-link {
+            padding: 8px 16px;
+            border-radius: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .nav-link:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+
+        .nav-link.active {
+            color: var(--accent-primary);
+            background: rgba(0, 212, 170, 0.1);
+        }
+
+        .nav-status {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* 主容器 */
+        .main-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .page-header {
+            margin-bottom: 24px;
+        }
+
+        .page-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .page-desc {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* 网格布局 */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 1024px) {
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+
+        /* 面板 */
+        .panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .panel:hover {
+            border-color: rgba(0, 212, 170, 0.3);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .panel-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 按钮 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--accent-gradient);
+            color: white;
+            box-shadow: 0 4px 16px rgba(0, 212, 170, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(0, 212, 170, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-hover);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+
+        /* 统计卡片 */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--accent-primary);
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* 进度条 */
+        .progress-bar-bg {
+            height: 8px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 12px 0;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--accent-gradient);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        /* 状态标签 */
+        .status-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-tag.running {
+            background: rgba(0, 212, 170, 0.15);
+            color: var(--success);
+        }
+
+        .status-tag.pending {
+            background: rgba(245, 166, 35, 0.15);
+            color: var(--warning);
+        }
+
+        .status-tag.completed {
+            background: rgba(0, 212, 170, 0.15);
+            color: var(--success);
+        }
+
+        .status-tag.failed {
+            background: rgba(255, 71, 87, 0.15);
+            color: var(--error);
+        }
+
+        /* 配置项 */
+        .config-item {
+            margin-bottom: 16px;
+        }
+
+        .config-label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .config-input, .config-select {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .config-input:focus, .config-select:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.1);
+        }
+
+        /* 任务列表 */
+        .task-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .task-item {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            transition: all 0.2s;
+        }
+
+        .task-item:hover {
+            border-color: rgba(0, 212, 170, 0.3);
+        }
+
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .task-id {
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .task-message {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 14px 20px;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .toast.success {
+            background: rgba(0, 212, 170, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(0, 212, 170, 0.3);
+        }
+
+        .toast.error {
+            background: rgba(255, 71, 87, 0.15);
+            color: var(--error);
+            border: 1px solid rgba(255, 71, 87, 0.3);
+        }
+
+        /* 滚动条 */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .main-container { padding: 16px; }
+            .navbar-inner { height: 50px; }
+            .logo { font-size: 1.1rem; }
+            .nav-links { display: none; }
+            .nav-status { display: none; }
+            .panel { padding: 16px; }
+            .stat-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <a href="/" class="logo">
+                <div class="logo-icon">🎙️</div>
+                <span>FunASR-N</span>
+            </a>
+            <div class="nav-links">
+                <a href="/" class="nav-link">🎯 语音识别</a>
+                <a href="/hotwords.html" class="nav-link">🔥 热词管理</a>
+                <a href="/finetune.html" class="nav-link active">🧠 模型微调</a>
+            </div>
+            <div class="nav-status">
+                <div class="status-badge">
+                    <span class="status-dot"></span>
+                    <span>服务在线</span>
+                </div>
+                <div class="status-badge" id="engineBadge">🔧 加载中...</div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <div class="main-container">
+        <div class="page-header">
+            <h1 class="page-title">🧠 模型微调</h1>
+            <p class="page-desc">基于用户反馈数据对 ASR 模型进行增量微调，提升特定领域识别准确率</p>
+        </div>
+
+        <div class="grid-2">
+            <!-- 左侧：状态与启动 -->
+            <div>
+                <!-- 准备状态 -->
+                <div class="panel" style="margin-bottom: 24px;">
+                    <div class="panel-title">📊 微调准备状态</div>
+                    <div class="stat-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="statTotal">-</div>
+                            <div class="stat-label">总反馈数</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="statValid">-</div>
+                            <div class="stat-label">有效反馈</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="statAudio">-</div>
+                            <div class="stat-label">含音频</div>
+                        </div>
+                    </div>
+                    <div id="readinessStatus" style="font-size: 0.85rem; color: var(--text-secondary);">
+                        加载中...
+                    </div>
+                    <div style="margin-top: 16px;">
+                        <button class="btn btn-primary" id="startFinetuneBtn" style="width: 100%;" disabled>
+                            🚀 启动微调训练
+                        </button>
+                    </div>
+                    <div style="margin-top: 12px; font-size: 0.8rem; color: var(--text-muted);">
+                        <div>• 需要至少 10 条有效反馈才能启动</div>
+                        <div>• 微调过程可能需要 30 分钟到数小时</div>
+                        <div>• 微调前请勿删除音频文件</div>
+                    </div>
+                </div>
+
+                <!-- 配置参数 -->
+                <div class="panel">
+                    <div class="panel-title">⚙️ 训练参数</div>
+                    <div class="config-item">
+                        <label class="config-label">训练轮数 (epochs)</label>
+                        <input type="number" class="config-input" id="epochsInput" value="3" min="1" max="10">
+                    </div>
+                    <div class="config-item">
+                        <label class="config-label">批次大小 (batch_size)</label>
+                        <input type="number" class="config-input" id="batchSizeInput" value="4" min="1" max="16">
+                    </div>
+                    <div class="config-item">
+                        <label class="config-label">最小反馈数</label>
+                        <input type="number" class="config-input" id="minFeedbackInput" value="10" min="5" max="100">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：任务列表 -->
+            <div class="panel">
+                <div class="panel-title">📋 微调任务</div>
+                <div id="taskListContainer">
+                    <div class="empty-state">
+                        <div class="empty-icon">🧠</div>
+                        <div>暂无微调任务</div>
+                        <div style="font-size: 0.8rem; margin-top: 8px;">启动训练后将在此显示进度</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 初始化 ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            loadEngineInfo();
+            loadFinetuneStatus();
+            loadTaskList();
+        });
+
+        // ==================== 加载微调状态 ====================
+        async function loadFinetuneStatus() {
+            try {
+                const response = await fetch('/finetune/status');
+                const data = await response.json();
+                
+                if (data.code === 0) {
+                    const r = data.data;
+                    document.getElementById('statTotal').textContent = r.total_feedback || 0;
+                    document.getElementById('statValid').textContent = r.valid_feedback || 0;
+                    document.getElementById('statAudio').textContent = r.with_audio || 0;
+                    
+                    const statusEl = document.getElementById('readinessStatus');
+                    const btn = document.getElementById('startFinetuneBtn');
+                    
+                    if (r.ready_for_finetune) {
+                        statusEl.innerHTML = `
+                            <div style="color: var(--success);">✅ 数据充足，可以启动微调</div>
+                            <div style="margin-top: 4px;">推荐反馈数: ${r.recommended ? '已满足' : '建议积累 50 条以上以获得更好效果'}</div>
+                        `;
+                        btn.disabled = false;
+                    } else {
+                        statusEl.innerHTML = `
+                            <div style="color: var(--warning);">⏳ 数据收集中</div>
+                            <div style="margin-top: 4px;">当前有效反馈: ${r.valid_feedback}/10（最低要求）</div>
+                        `;
+                        btn.disabled = true;
+                    }
+                }
+            } catch (err) {
+                console.error('加载状态失败:', err);
+                document.getElementById('readinessStatus').textContent = '加载失败';
+            }
+        }
+
+        // ==================== 启动微调 ====================
+        document.getElementById('startFinetuneBtn').addEventListener('click', async () => {
+            if (!confirm('启动模型微调需要一定时间，确定继续？')) return;
+            
+            const btn = document.getElementById('startFinetuneBtn');
+            const epochs = document.getElementById('epochsInput').value;
+            const batchSize = document.getElementById('batchSizeInput').value;
+            const minFeedback = document.getElementById('minFeedbackInput').value;
+            
+            btn.disabled = true;
+            btn.textContent = '🔄 启动中...';
+            
+            try {
+                const response = await fetch('/finetune/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `min_feedback=${minFeedback}&epochs=${epochs}&batch_size=${batchSize}`
+                });
+                const data = await response.json();
+                
+                if (data.code === 0) {
+                    showToast('微调任务已启动: ' + data.task_id, 'success');
+                    pollTaskProgress(data.task_id);
+                    loadTaskList();
+                } else {
+                    showToast(data.error || '启动失败', 'error');
+                    btn.disabled = false;
+                    btn.textContent = '🚀 启动微调训练';
+                }
+            } catch (err) {
+                showToast('启动失败: ' + err.message, 'error');
+                btn.disabled = false;
+                btn.textContent = '🚀 启动微调训练';
+            }
+        });
+
+        // ==================== 轮询任务进度 ====================
+        async function pollTaskProgress(taskId) {
+            const interval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/finetune/task/${taskId}`);
+                    const data = await response.json();
+                    
+                    if (data.code === 0) {
+                        const task = data.data;
+                        loadTaskList();
+                        
+                        if (task.status === 'completed') {
+                            clearInterval(interval);
+                            showToast('模型微调完成！', 'success');
+                            document.getElementById('startFinetuneBtn').disabled = false;
+                            document.getElementById('startFinetuneBtn').textContent = '🚀 启动微调训练';
+                        } else if (task.status === 'failed') {
+                            clearInterval(interval);
+                            showToast('微调失败: ' + task.error, 'error');
+                            document.getElementById('startFinetuneBtn').disabled = false;
+                            document.getElementById('startFinetuneBtn').textContent = '🚀 启动微调训练';
+                        }
+                    }
+                } catch (err) {
+                    console.error('查询进度失败:', err);
+                }
+            }, 5000);
+        }
+
+        // ==================== 加载任务列表 ====================
+        async function loadTaskList() {
+            try {
+                const response = await fetch('/finetune/tasks');
+                const data = await response.json();
+                
+                const container = document.getElementById('taskListContainer');
+                
+                if (data.code === 0 && data.data && data.data.length > 0) {
+                    container.innerHTML = `
+                        <div class="task-list">
+                            ${data.data.map(task => `
+                                <div class="task-item">
+                                    <div class="task-header">
+                                        <span class="task-id">${task.id}</span>
+                                        <span class="status-tag ${task.status}">
+                                            ${getStatusIcon(task.status)} ${task.status}
+                                        </span>
+                                    </div>
+                                    <div class="progress-bar-bg">
+                                        <div class="progress-bar-fill" style="width: ${task.progress}%"></div>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
+                                        <span>${task.message}</span>
+                                        <span>${task.progress}%</span>
+                                    </div>
+                                    ${task.error ? `<div style="margin-top: 8px; font-size: 0.8rem; color: var(--error);">❌ ${escapeHtml(task.error)}</div>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-icon">🧠</div>
+                            <div>暂无微调任务</div>
+                            <div style="font-size: 0.8rem; margin-top: 8px;">启动训练后将在此显示进度</div>
+                        </div>
+                    `;
+                }
+            } catch (err) {
+                console.error('加载任务列表失败:', err);
+            }
+        }
+
+        function getStatusIcon(status) {
+            const icons = {
+                pending: '⏳',
+                running: '🔄',
+                completed: '✅',
+                failed: '❌'
+            };
+            return icons[status] || '❓';
+        }
+
+        // ==================== 引擎信息 ====================
+        async function loadEngineInfo() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                if (data.engine_display) {
+                    document.getElementById('engineBadge').textContent = '🔧 ' + data.engine_display;
+                }
+            } catch (err) {
+                console.error('加载引擎信息失败:', err);
+            }
+        }
+
+        // ==================== 工具函数 ====================
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showToast(message, type = 'success') {
+            const existing = document.querySelector('.toast');
+            if (existing) existing.remove();
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = type === 'success' ? `✓ ${message}` : `✕ ${message}`;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'slideIn 0.3s ease reverse';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
