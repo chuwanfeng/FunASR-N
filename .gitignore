@@ -17,6 +17,10 @@ results/
 # 模型缓存（你放模型的目录，可选忽略）
 # funasr_models/
 # models/
+Qwen3-ASR-0.6B-OV/
+
+#依赖库缓存（如果你有依赖库文件夹，可以忽略）
+Qwen3-ASR/
 
 # 日志与临时文件
 *.log

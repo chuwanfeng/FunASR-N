@@ -4,8 +4,10 @@
 
 import logging
 import sys
+import torch
 from datetime import datetime
 from pathlib import Path
+from config import DEVICE
 
 
 def get_logger(name: str = "FunASR") -> logging.Logger:
@@ -65,3 +67,7 @@ def safe_filename(filename: str) -> str:
         name, ext = safe.rsplit(".", 1) if "." in safe else (safe, "")
         safe = name[:190] + ("." + ext if ext else "")
     return safe
+
+# 张量移动到设备
+def to_device(tensor):
+    return tensor.to(DEVICE) if isinstance(tensor, torch.Tensor) else tensor

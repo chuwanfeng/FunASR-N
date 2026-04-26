@@ -4,6 +4,8 @@ Paraformer ASR 推理引擎
 """
 
 import os
+import re
+import gc
 import time
 import threading
 import tempfile
@@ -45,9 +47,13 @@ from config import (
     VAD_SPEED_UP,
     ENABLE_PUNCTUATION,
     PUNCTUATION_MODEL,
+    ASR_ENGINE,
     PARAFORMER_MODEL,
-    MODEL_HUB,
     PARAFORMER_REVISION,
+    SENSEVOICE_MODEL,
+    SENSEVOICE_REVISION,
+    MODEL_HUB,
+    MODEL_CACHE_DIR,
     BATCH_SIZE,
     ASR_SEGMENT_DURATION,
 )
@@ -58,14 +64,23 @@ logger = get_logger()
 
 @dataclass
 class RecognitionSegment:
-    """识别片段"""
+    """识别片段
+    
+    字段说明:
+        text: 原始识别文本（可能无标点，用于内部处理）
+        start: 开始时间(秒)
+        end: 结束时间(秒)
+        text_with_punc: 标点恢复后的文本（用于显示给用户）
+        confidence: 置信度
+        timestamps: 原始词级时间戳 [[start_ms, end_ms], ...]
+    """
 
-    text: str  # 原始文本（无标点，用于时间戳对齐）
-    start: float  # 开始时间(秒)
-    end: float  # 结束时间(秒)
-    text_with_punc: Optional[str] = None  # 标点恢复后的文本（用于显示）
+    text: str
+    start: float
+    end: float
+    text_with_punc: Optional[str] = None
     confidence: Optional[float] = None
-    timestamps: Optional[List[List[int]]] = None  # 原始时间戳
+    timestamps: Optional[List[List[int]]] = None
 
 
 @dataclass
@@ -82,6 +97,16 @@ class WordTimestamp:
     @property
     def end_sec(self) -> float:
         return self.end_ms / 1000.0
+
+
+def format_time(seconds: float) -> str:
+    """将秒数格式化为 SRT 时间格式 HH:MM:SS,mmm"""
+    total_millis = int(round(seconds * 1000))
+    hours = total_millis // 3600000
+    minutes = (total_millis % 3600000) // 60000
+    secs = (total_millis % 60000) // 1000
+    millis = total_millis % 1000
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 
 class ParaformerEngine:
@@ -108,7 +133,16 @@ class ParaformerEngine:
                     "FunASR 未安装。请运行: pip install funasr modelscope torchaudio"
                 )
 
-            logger.info(f"正在加载 Paraformer 模型: {PARAFORMER_MODEL}")
+            # 根据配置选择模型
+            if ASR_ENGINE == "sensevoice":
+                _model_name = SENSEVOICE_MODEL
+                _model_rev = SENSEVOICE_REVISION
+                logger.info(f"正在加载 SenseVoice 模型: {_model_name}")
+            else:
+                _model_name = PARAFORMER_MODEL
+                _model_rev = PARAFORMER_REVISION
+                logger.info(f"正在加载 Paraformer 模型: {_model_name}")
+
             start_time = time.time()
 
             # 设置设备 - 自动适配 NVIDIA / Apple Silicon / CPU
@@ -123,15 +157,15 @@ class ParaformerEngine:
 
             # 加载主模型
             self.model = AutoModel(
-                model=PARAFORMER_MODEL,
-                # model_revision=PARAFORMER_REVISION,
-                hub=MODEL_HUB,  # 可选："hf"（Hugging Face 源，速度较慢），"ms"（ModelScope 源，速度较快）
+                model=_model_name,
+                model_revision=_model_rev,
+                hub=MODEL_HUB,
                 device=device,
-                trust_remote_code=False,  # 安全考虑，禁用远程代码执行,社区/魔改/自定义模型 需要设置为 True
-                disable_update=True,  # 关闭自动更新检查（加速加载）
-                disable_log=True,  # 减少日志输出
+                trust_remote_code=False,
+                disable_update=True,
+                disable_log=True,
                 batch_size=BATCH_SIZE,
-                ncpu=NUM_THREADS,  # 多线程
+                ncpu=NUM_THREADS,
             )
 
             # 可选：加载 VAD 模型
@@ -196,7 +230,7 @@ class ParaformerEngine:
         audio, sr = librosa.load(audio_path, sr=SAMPLE_RATE, mono=True)
         return audio.astype(np.float32), sr
 
-    def apply_vad(self, audio_np: np.ndarray, sample_rate: int = 16000):
+    def _apply_vad(self, audio_np: np.ndarray, sample_rate: int = 16000):
         """
             使用 VAD 模型对音频进行语音活动检测，返回有效语音片段的时间戳（秒）
         Args:
@@ -229,9 +263,8 @@ class ParaformerEngine:
                     start = round(float(seg[0]) / 1000.0, 3)  # 👈 除以1000！毫秒→秒
                     end = round(float(seg[1]) / 1000.0, 3)  # 👈 除以1000！
 
-                    if (
-                        end > start and (end - start) >= VAD_MIN_SILENCE_DURATION
-                    ):  # 0.5秒即可
+                    # 过滤：时长至少 VAD_MIN_SILENCE_DURATION 秒（默认0.3s）
+                    if end > start and (end - start) >= VAD_MIN_SILENCE_DURATION:
                         speech_segments.append((start, end))
 
             logger.info(f"VAD 检测到 {len(speech_segments)} 段有效语音")
@@ -241,88 +274,6 @@ class ParaformerEngine:
             # 降级：每 ASR_SEGMENT_DURATION 秒一段
             segment_duration = ASR_SEGMENT_DURATION
             total_duration = len(audio_np) / sample_rate
-            segments = []
-            start = 0.0
-            while start < total_duration:
-                end = min(start + segment_duration, total_duration)
-                segments.append((start, end))
-                start = end
-            logger.warning(
-                f"VAD 处理失败: {e}，使用 {segment_duration} 秒分段，共 {len(segments)} 段"
-            )
-            return segments
-
-    def _apply_vad(self, audio: np.ndarray, sr: int) -> List[Tuple[float, float]]:
-        """
-        基于能量检测的简单 VAD（兼容 Windows）
-        返回有效语音段的时间区间
-        """
-        try:
-            # 计算能量（短时能量）
-            frame_length = int(0.025 * sr)  # 25ms 帧长
-            hop_length = int(0.010 * sr)  # 10ms 帧移
-
-            # 分帧并计算每帧能量
-            frames = librosa.util.frame(
-                audio, frame_length=frame_length, hop_length=hop_length
-            )
-            energy = np.sum(frames**2, axis=0)
-
-            # 动态阈值（能量均值的 1/5）
-            threshold = np.mean(energy) * 0.25
-
-            # 标记语音帧（能量超过阈值）
-            speech_frames = energy > threshold
-
-            # 合并连续的语音帧为时间段
-            segments = []
-            in_speech = False
-            start_frame = 0
-
-            # 最小语音段长度（1.5秒）
-            min_speech_frames = int(1.0 * sr / hop_length)
-            # 最大静音间隔（1.0秒）内合并
-            max_silence_frames = int(0.5 * sr / hop_length)
-
-            silence_count = 0
-
-            for i, is_speech in enumerate(speech_frames):
-                if is_speech and not in_speech:
-                    # 开始新的语音段
-                    in_speech = True
-                    start_frame = i
-                    silence_count = 0
-                elif not is_speech and in_speech:
-                    silence_count += 1
-                    # 如果静音超过阈值，结束当前语音段
-                    if silence_count > max_silence_frames:
-                        end_frame = i - silence_count
-                        duration = (end_frame - start_frame) * hop_length / sr
-                        if duration >= min_speech_frames * hop_length / sr:
-                            start_time = start_frame * hop_length / sr
-                            end_time = end_frame * hop_length / sr
-                            segments.append((start_time, end_time))
-                        in_speech = False
-
-            # 处理最后一个未结束的语音段
-            if in_speech:
-                end_frame = len(speech_frames) - silence_count
-                start_time = start_frame * hop_length / sr
-                end_time = end_frame * hop_length / sr
-                if end_time - start_time >= 0.3:
-                    segments.append((start_time, end_time))
-
-            # 如果没有检测到语音段，返回整个音频作为一个片段
-            if not segments:
-                segments = [(0.0, len(audio) / sr)]
-
-            logger.info(f"VAD 检测到 {len(segments)} 个语音段")
-            return segments
-
-        except Exception as e:
-            # 降级：每 30 秒一段
-            segment_duration = ASR_SEGMENT_DURATION
-            total_duration = len(audio) / sr
             segments = []
             start = 0.0
             while start < total_duration:
@@ -387,13 +338,14 @@ class ParaformerEngine:
         if max_val > 0:
             audio = audio / max_val * 0.95
 
-        # 获取 VAD 分段
-        if self.vad_model is not None:
-            # segments = self._apply_vad(audio, sr)
-            segments = self.apply_vad(audio, sr)
-            logger.info(f"检测到 {len(segments)} 个有效语音段")
-            if not segments:
-                # 使用配置的分段时长（避免内存爆炸）
+        # 获取 VAD 分段（优先在静音处切分，避免切在句子中间）
+        if self.vad_model is not None and USE_VAD:
+            vad_segments = self._apply_vad(audio, sr)
+            logger.info(f"VAD 检测到 {len(vad_segments)} 个有效语音段")
+            if vad_segments:
+                segments = vad_segments
+            else:
+                # 无有效语音时，使用固定时长分段
                 segment_duration = ASR_SEGMENT_DURATION
                 segments = []
                 start = 0.0
@@ -404,9 +356,8 @@ class ParaformerEngine:
                 logger.info(
                     f"未检测到有效语音，使用 {segment_duration} 秒分段，共 {len(segments)} 段"
                 )
-            # logger.info(f"VAD 分段结果: {segments}")
         else:
-            # 使用配置的分段时长（避免内存爆炸）
+            # VAD 未启用或模型未加载，使用固定时长分段
             segment_duration = ASR_SEGMENT_DURATION
             segments = []
             start = 0.0
@@ -415,10 +366,10 @@ class ParaformerEngine:
                 segments.append((start, end))
                 start = end
             logger.info(f"使用 {segment_duration} 秒分段，共 {len(segments)} 段")
-            # logger.info(f"时长分段结果: {segments}")
 
         # 逐段识别
         results = []
+        processed_count = 0
         for seg_start, seg_end in segments:
             # 提取片段音频
             start_sample = int(seg_start * sr)
@@ -434,25 +385,13 @@ class ParaformerEngine:
                 sf.write(temp_path, seg_audio, sr)
 
             try:
-                # 识别 - 根据模型类型选择参数
-                match PARAFORMER_MODEL:
-                    case model if "paraformer-zh" in model:
-                        # 中文专用模型（paraformer-zh）和其他模型
-                        res = self.model.generate(
-                            input=temp_path,
-                            batch_size=1,
-                            hotwords=hotwords,
-                            output_timestamp=True,
-                        )
-                    case _:
-                        # 多语种模型（中/英/日/韩）
-                        res = self.model.generate(
-                            input=temp_path,
-                            language="auto",
-                            batch_size=1,
-                            hotwords=hotwords,
-                            output_timestamp=True,
-                        )
+                # 识别（所有引擎统一参数，差异在 config.py 的模型选择）
+                res = self.model.generate(
+                    input=temp_path,
+                    batch_size=1,
+                    hotwords=hotwords,
+                    output_timestamp=True,
+                )
                 # logger.info(f"识别结果: {res}")
 
                 if res and len(res) > 0:
@@ -461,8 +400,6 @@ class ParaformerEngine:
 
                     if original_text:
                         # 过滤 SenseVoice 特殊标记 <|xxx|>
-                        import re
-
                         original_text = re.sub(r"<\|[^|]*\|>", "", original_text)
                         original_text = original_text.strip()
 
@@ -501,8 +438,12 @@ class ParaformerEngine:
                 # 清理临时文件
                 try:
                     os.unlink(temp_path)
-                except:
-                    pass
+                except OSError as e:
+                    logger.warning(f"清理临时文件失败: {e}")
+                processed_count += 1
+                # 每处理10个片段主动触发一次GC，防止内存膨胀
+                if processed_count % 10 == 0:
+                    gc.collect()
 
         if return_timestamps:
             return results
@@ -525,11 +466,8 @@ class ParaformerEngine:
             return []
 
         final_segments = []
-        import re
 
         for seg in segments:
-            #logger.info(f"检查片段: text='{seg.text}',text_with_punc='{seg.text_with_punc}', timestamps存在={seg.timestamps is not None}, 长度={len(seg.timestamps) if seg.timestamps else 0}")
-            #logger.info(f"处理片段: '{seg.start:.2f}-{seg.end:.2f}' '{seg.text}'")
             # 如果有精确时间戳（词级别），基于时间戳按句子分拆
             if seg.timestamps is not None and len(seg.timestamps) > 0:
                 # 将文本分词：优先按空格，如果没有空格则按字符（中文场景）
@@ -540,8 +478,7 @@ class ParaformerEngine:
                     words = seg.text.split()
                 else:
                     # 中文场景：按字符拆分
-                    words = list(seg.text)  # 每个字符单独作为一个词
-                    #logger.info(f"文本无空格，按字符拆分，得到 {len(words)} 个字符")
+                    words = list(seg.text)
 
                 # 确保词数和时间戳数量一致
                 if len(words) == len(timestamps):
@@ -566,7 +503,6 @@ class ParaformerEngine:
                         # 循环处理：每次找第一个标点符号，取出符号前的文本和时间戳
                         remaining_text = text_with_punc
                         word_idx = 0
-                        char_pos = 0
 
                         while remaining_text:
                             # 查找第一个标点符号的位置
@@ -639,13 +575,19 @@ class ParaformerEngine:
             sentences = [s.strip() for s in sentences if s.strip()]
 
             if len(sentences) > 1:
-                # 有多个句子，按时间比例分配
+                # 有多个句子，按时间比例分配（保证不越界）
                 total_chars = len(text)
                 current_start = start_time
-                for sent in sentences:
+                remaining_duration = duration
+                for i, sent in enumerate(sentences):
                     sent_chars = len(sent)
-                    sent_duration = max(1.5, (sent_chars / total_chars) * duration)
-                    sent_end = min(current_start + sent_duration, end_time)
+                    # 最后一句用完剩余时间，避免累加误差
+                    if i == len(sentences) - 1:
+                        sent_end = end_time
+                    else:
+                        sent_duration = max(1.5, (sent_chars / total_chars) * duration)
+                        sent_duration = min(sent_duration, remaining_duration - 1.5 * (len(sentences) - i - 1))
+                        sent_end = min(current_start + sent_duration, end_time)
                     final_segments.append(
                         RecognitionSegment(
                             text=sent,
@@ -655,6 +597,7 @@ class ParaformerEngine:
                             timestamps=None,
                         )
                     )
+                    remaining_duration -= (sent_end - current_start)
                     current_start = sent_end
             else:
                 # 没有标点符号，但如果时间太长（超过12秒），按固定时长切分
@@ -710,13 +653,6 @@ class ParaformerEngine:
                 return "", []
             return ""
 
-        def format_time(seconds: float) -> str:
-            hours = int(seconds // 3600)
-            minutes = int((seconds % 3600) // 60)
-            secs = int(seconds % 60)
-            millis = int((seconds % 1) * 1000)
-            return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
-
         lines = []
         segment_list = []
         for idx, seg in enumerate(segments, 1):
@@ -730,6 +666,7 @@ class ParaformerEngine:
                     "start": seg.start,
                     "end": seg.end,
                     "text": seg.text.strip(),
+                    "text_with_punc": getattr(seg, 'text_with_punc', seg.text.strip()),
                 }
             )
 
@@ -747,14 +684,26 @@ class ParaformerEngine:
         """检查引擎是否可用"""
         return FUNASR_AVAILABLE
 
+    def get_engine_info(self) -> dict:
+        """返回当前引擎信息"""
+        return {
+            "engine": ASR_ENGINE,
+            "model": SENSEVOICE_MODEL if ASR_ENGINE == "sensevoice" else PARAFORMER_MODEL,
+            "vad_enabled": USE_VAD,
+            "punctuation_enabled": ENABLE_PUNCTUATION,
+        }
 
-# 全局单例
+
+# 全局单例（线程安全）
 _engine_instance = None
+_engine_lock = threading.Lock()
 
 
 def get_engine() -> ParaformerEngine:
-    """获取全局 Paraformer 引擎实例"""
+    """获取全局 Paraformer 引擎实例（线程安全）"""
     global _engine_instance
     if _engine_instance is None:
-        _engine_instance = ParaformerEngine()
+        with _engine_lock:
+            if _engine_instance is None:
+                _engine_instance = ParaformerEngine()
     return _engine_instance
