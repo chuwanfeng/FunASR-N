@@ -4,6 +4,7 @@
 # 核心 ASR 框架
 funasr>=1.0.0
 modelscope>=1.10.0
+silero-vad>=6.0.0
 
 # 深度学习框架
 torch>=2.0.0

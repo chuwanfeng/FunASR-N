@@ -43,8 +43,10 @@ from config import (
     SAMPLE_RATE,
     NUM_THREADS,
     USE_VAD,
-    VAD_MIN_SILENCE_DURATION,
-    VAD_SPEED_UP,
+    SILERO_VAD_THRESHOLD,
+    SILERO_VAD_MIN_SPEECH_DURATION,
+    SILERO_VAD_MIN_SILENCE_DURATION,
+    SILERO_VAD_SPEECH_PAD,
     ENABLE_PUNCTUATION,
     PUNCTUATION_MODEL,
     ASR_ENGINE,
@@ -171,20 +173,15 @@ class ParaformerEngine:
                 ncpu=NUM_THREADS,
             )
 
-            # 可选：加载 VAD 模型
+            # 加载 SileroVAD 模型
             if USE_VAD:
                 try:
-                    from funasr import AutoModel as VadModel
-
-                    self.vad_model = VadModel(
-                        model="fsmn-vad",
-                        model_revision="v2.0.4",
-                        device=device,
-                        disable_log=True,
-                    )
-                    logger.info("VAD 模型加载成功")
+                    from silero_vad import load_silero_vad
+                    self.vad_model = load_silero_vad()
+                    self.vad_model.eval()
+                    logger.info("SileroVAD 模型加载成功")
                 except Exception as e:
-                    logger.warning(f"VAD 模型加载失败: {e}，将使用简单分段")
+                    logger.warning(f"SileroVAD 加载失败: {e}，将使用简单分段")
                     self.vad_model = None
 
             # 可选：加载标点恢复模型
@@ -245,32 +242,31 @@ class ParaformerEngine:
         """
         try:
             audio_np = np.asarray(audio_np, dtype=np.float32)
-            result = self.vad_model.generate(
-                input=audio_np,
-                chunk_size=int(
-                    10000 / VAD_SPEED_UP
-                ),  # 在这里用加速倍数调整 VAD 的 chunk_size，默认 10s，VAD_SPEED_UP=10 时变为 1s
-                cache={},
-                data_type="sound",
+            
+            # SileroVAD 处理
+            from silero_vad import get_speech_timestamps
+            
+            audio_tensor = torch.from_numpy(audio_np)
+            timestamps = get_speech_timestamps(
+                audio_tensor,
+                self.vad_model,
+                threshold=SILERO_VAD_THRESHOLD,
                 sampling_rate=sample_rate,
+                min_speech_duration_ms=int(SILERO_VAD_MIN_SPEECH_DURATION * 1000),
+                min_silence_duration_ms=int(SILERO_VAD_MIN_SILENCE_DURATION * 1000),
+                speech_pad_ms=int(SILERO_VAD_SPEECH_PAD * 1000),
             )
-
-            if not result:
-                logger.warning("VAD 未检测到有效语音")
-                return []
-
-            vad_segments = result[0].get("value", [])
+            
             speech_segments = []
-            for seg in vad_segments:
-                if len(seg) >= 2:
-                    start = round(float(seg[0]) / 1000.0, 3)  # 👈 除以1000！毫秒→秒
-                    end = round(float(seg[1]) / 1000.0, 3)  # 👈 除以1000！
-                    
-                    # 过滤：时长至少 VAD_MIN_SILENCE_DURATION 秒（默认0.5s）
-                    if end > start and (end - start) >= VAD_MIN_SILENCE_DURATION:
-                        speech_segments.append((start, end))
-
-            logger.info(f"VAD 检测到 {len(speech_segments)} 段有效语音")
+            for ts in timestamps:
+                start = round(ts['start'] / sample_rate, 3)
+                end = round(ts['end'] / sample_rate, 3)
+                
+                # 过滤：时长至少 SILERO_VAD_MIN_SPEECH_DURATION 秒
+                if end > start and (end - start) >= SILERO_VAD_MIN_SPEECH_DURATION:
+                    speech_segments.append((start, end))
+            
+            logger.info(f"SileroVAD 检测到 {len(speech_segments)} 段有效语音")
             return speech_segments
 
         except Exception as e:

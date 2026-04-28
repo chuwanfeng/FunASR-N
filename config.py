@@ -70,13 +70,17 @@ HOP_LENGTH = 160
 # ==================== 🔇 VAD 静音检测 ====================
 # 启用后可跳过静音段，提升长音频处理速度 (约 30-50%)
 USE_VAD = True  # 默认关闭，避免丢失短对话（见下方说明）
-VAD_MIN_SILENCE_DURATION = 0.5  # 静音超此时长则切分(秒)，0.5s 减少误切分短对话
-VAD_SPEED_UP = 1.0              # VAD 加速倍数
+
+# SileroVAD 配置
+SILERO_VAD_THRESHOLD = 0.5      # 语音检测阈值 (0.0-1.0)，越高越严格
+SILERO_VAD_MIN_SPEECH_DURATION = 0.25  # 最小语音时长(秒)，低于此值视为噪声
+SILERO_VAD_MIN_SILENCE_DURATION = 0.5  # 最小静音时长(秒)，用于切分片段
+SILERO_VAD_SPEECH_PAD = 0.1     # 语音段前后填充(秒)，避免截断
 
 # VAD 使用建议：
 # - 长音频/演讲：开启 USE_VAD=True，节省处理时间
 # - 短对话/访谈：关闭 USE_VAD=False，避免丢失短句（默认）
-# - 如果开启后丢失对话，增大 VAD_MIN_SILENCE_DURATION 到 0.8-1.0
+# - 如果开启后丢失对话，增大 SILERO_VAD_MIN_SILENCE_DURATION 到 0.8-1.0
 
 # ==================== ✏️ 后处理 ====================
 ENABLE_PUNCTUATION = True  # 启用标点恢复

@@ -8,7 +8,7 @@
 - ⚡ **硬件加速**：支持 OpenVINO GPU 加速，CPU 多线程优化
 - 🎬 **多格式支持**：MP4、AVI、MOV、MKV、MP3、WAV、FLAC、M4A 等
 - 📝 **SRT 字幕**：自动生成带时间轴的标准 SRT 字幕文件
-- 🔧 **VAD 静音检测**：自动跳过静音段，提升处理速度
+- 🔧 **SileroVAD 静音检测**：准确率更高，不易丢失短对话，提升处理速度
 - 🌐 **Web 界面**：简洁美观的拖拽上传界面，支持字幕实时编辑
 - 🔥 **热词定制**：支持自定义热词，从用户反馈自动提取热词
 - 🧠 **模型微调**：基于用户反馈数据增量微调，越用越准确
@@ -116,9 +116,15 @@ QWEN_MODEL_ID = "Qwen/Qwen3-ASR-0.6B"
 NUM_THREADS = 8               # CPU 线程数
 BATCH_SIZE = 2                # 批处理大小
 
-# VAD 静音检测
+# VAD 静音检测 (SileroVAD，准确率更高)
 USE_VAD = True
 VAD_MIN_SILENCE_DURATION = 0.5
+
+# SileroVAD 配置
+SILERO_VAD_THRESHOLD = 0.5
+SILERO_VAD_MIN_SPEECH_DURATION = 0.25
+SILERO_VAD_MIN_SILENCE_DURATION = 0.5
+SILERO_VAD_SPEECH_PAD = 0.1
 
 # 字幕参数
 SRT_MAX_SEGMENT_DURATION = 8.0
@@ -187,6 +193,9 @@ HOTWORDS = []                 # 自定义热词列表
 
 ### Q: 提示 "No module named 'funasr'"
 A: 运行 `pip install funasr modelscope`
+
+### Q: 提示 "No module named 'silero_vad'"
+A: 运行 `pip install silero-vad`
 
 ### Q: 视频处理失败
 A: 安装 FFmpeg 并添加到 PATH
