@@ -3,9 +3,9 @@
 # 支持 Paraformer / SenseVoice / Qwen3-ASR 三大引擎
 # ============================================================
 
+import os
 import torch
 import multiprocessing
-import os
 from pathlib import Path
 
 # ==================== 🎯 引擎与模型选择 ====================
@@ -55,7 +55,7 @@ QWEN_MODEL_CACHE = r"D:\Scoop\qwen_models"
 # i7-12700 (12核20线程) → 12
 # i9 / Ryzen 9 → 16
 CPU_COUNT = multiprocessing.cpu_count()
-NUM_THREADS = max(4, int(CPU_COUNT * 0.6))
+NUM_THREADS = max(4, int(CPU_COUNT * 0.7))
 print(f"[Config] CPU: {CPU_COUNT}核, 分配线程数: {NUM_THREADS}")
 
 # 批处理大小 (CPU 环境建议 1-4，显存充足可加大)
@@ -87,9 +87,6 @@ SRT_MIN_SEGMENT_DURATION = 1.0  # 最小时长(秒)
 
 # ASR 内部分段时长 (超过此长度自动切分)
 ASR_SEGMENT_DURATION = 15.0  # 中文建议 15s，日韩语建议 30s
-
-# 重叠扩展参数（用于恢复 VAD 可能截断的对话）
-VAD_OVERLAP_EXTENSION = 0.2  # 前后各扩展 0.2s，避免截断首尾语音
 
 # ==================== 🌐 服务配置 ====================
 SERVER_HOST = "127.0.0.1"
