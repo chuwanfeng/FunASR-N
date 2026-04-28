@@ -29,6 +29,7 @@ from datetime import datetime
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.encoders import jsonable_encoder
 import uvicorn
 
 from config import (
@@ -347,22 +348,21 @@ async def health_check():
     # 统计持久化音频数量
     archived_count = len(list(AUDIO_ARCHIVE_DIR.glob("*.wav"))) if AUDIO_ARCHIVE_DIR.exists() else 0
     
-    return JSONResponse(
-        {
-            "status": "ok",
-            "engine": ASR_ENGINE,
-            "engine_display": _engine_display,
-            "engine_available": asr_engine.is_available(),
-            "device": DEVICE,
-            "openvino_device": OPENVINO_DEVICE,
-            "model": PARAFORMER_MODEL if ASR_ENGINE.startswith("paraformer") else (SENSEVOICE_MODEL if ASR_ENGINE == "sensevoice" else QWEN_MODEL_ID),
-            "qwen_ready": QWEN_AVAILABLE,
-            "vad_enabled": USE_VAD,
-            "punctuation_enabled": ENABLE_PUNCTUATION,
-            "audio_archive_count": archived_count,
-            "audio_archive_dir": str(AUDIO_ARCHIVE_DIR),
-        }
-    )
+    data = {
+        "status": "ok",
+        "engine": ASR_ENGINE,
+        "engine_display": _engine_display,
+        "engine_available": asr_engine.is_available(),
+        "device": DEVICE,
+        "openvino_device": OPENVINO_DEVICE,
+        "model": PARAFORMER_MODEL if ASR_ENGINE.startswith("paraformer") else (SENSEVOICE_MODEL if ASR_ENGINE == "sensevoice" else QWEN_MODEL_ID),
+        "qwen_ready": QWEN_AVAILABLE,
+        "vad_enabled": USE_VAD,
+        "punctuation_enabled": ENABLE_PUNCTUATION,
+        "audio_archive_count": archived_count,
+        "audio_archive_dir": str(AUDIO_ARCHIVE_DIR),
+    }
+    return JSONResponse(content=jsonable_encoder(data))
 
 
 @app.post("/recognize")

@@ -251,6 +251,11 @@ class QwenASREngine:
         audio, sr = self._load_audio(audio_path)
         total_duration = len(audio) / sr
 
+        # 音量归一化（与 paraformer 引擎保持一致）
+        max_val = np.max(np.abs(audio))
+        if max_val > 0:
+            audio = audio / max_val * 0.95
+
         # VAD 分段
         if self.vad_model is not None:
             segments = self._apply_vad(audio, sr)

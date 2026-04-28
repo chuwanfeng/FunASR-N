@@ -15,7 +15,7 @@ from pathlib import Path
 #   "paraformer-zh-small" → Paraformer 缩小版 (更轻量)
 #   "sensevoice"          → SenseVoice 多语种模型 (支持中英日韩等)
 #   "qwen"               → Qwen3-ASR-0.6B (最高准确率，需要先转换)
-ASR_ENGINE = "paraformer-zh"
+ASR_ENGINE = "qwen"
 
 # 根据引擎自动推断设备类型（通常不需要修改）
 DEVICE = "openvino"  # CPU / OpenVINO
