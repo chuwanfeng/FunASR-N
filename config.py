@@ -80,7 +80,8 @@ SILERO_VAD_SPEECH_PAD = 0.1     # 语音段前后填充(秒)，避免截断
 # VAD 使用建议：
 # - 长音频/演讲：开启 USE_VAD=True，节省处理时间
 # - 短对话/访谈：关闭 USE_VAD=False，避免丢失短句（默认）
-# - 如果开启后丢失对话，增大 SILERO_VAD_MIN_SILENCE_DURATION 到 0.8-1.0
+# - 丢失短句/气音：调小 SILERO_VAD_MIN_SPEECH_DURATION 或调低 SILERO_VAD_THRESHOLD
+# - 一句话被切成太多段：调大 SILERO_VAD_MIN_SILENCE_DURATION 到 0.8-1.0
 
 # ==================== ✏️ 后处理 ====================
 ENABLE_PUNCTUATION = True  # 启用标点恢复
